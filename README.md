@@ -14,6 +14,7 @@ please don't ever hesitate to reach out!
   Contains detailed gametime statistics for over 25000 different college basketball players from different tournaments
   throughout their respective college careers. For this project, only the most recent college performance was used
   for our algorithms to reduce redundancy, and because it is the most highly correlated with draft outcomes.
+  
 [NBA Database](https://www.kaggle.com/datasets/wyattowalsh/basketball)
   A SQL-style database containing high-volume data on players, teams, and play-by-play information. We were interested
   in draft outcomes, so we pulled player names, ID numbers, draft outcomes, and several other metrics of interest.
