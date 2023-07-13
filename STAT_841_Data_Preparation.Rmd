@@ -1,0 +1,278 @@
+---
+title: "Exploratory Final Project"
+author: "Robert Kurdyak"
+date: "2023-03-10"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r fig.height= 12, fig.width = 10}
+# eval has been set to false since the data has already been processed
+
+library(tidyverse)
+library(mice)
+library(readxl)
+
+drafted_2009_21 <- read_excel('DraftedPlayers2009-2021.xlsx')
+
+# Recorded values that are relevant to analysis
+vars_of_interest <- c("season", "player_id", "player_name", "height_wo_shoes", "weight",
+                      "wingspan", "standing_reach", "standing_vertical_leap",
+                      "max_vertical_leap", "lane_agility_time", "three_quarter_sprint",
+                      "bench_press", "position")
+
+# Read in combine stats and rename one of the identifying columns
+NBA_combine <- read.csv("draft_combine_stats.csv") %>%
+  filter(season > 1980) %>%
+  rename(person_id = player_id)
+
+NBA_draft <- read.csv("draft_history.csv") %>%
+  filter(season > 1980)
+
+# Only include the relevant columns
+NBA_draft_final <- NBA_draft %>%
+  select(c(person_id, player_name, season, round_number, round_pick, overall_pick,
+           team_city, team_name))
+  
+# Merge the combine and draft data
+df_combined <- merge(x = NBA_combine, y = NBA_draft_final, by.left = person_id,
+                     by.right = person_id, all.x = TRUE)
+  #select(all_of(vars_of_interest)) %>%
+
+# Select relevant variables, and create dummy variables to weed out the most sparse data
+df_combined <- df_combined %>%
+  select(c("season", "team_city", "team_name", "person_id", "position",
+           "player_name", "height_wo_shoes", "weight", "wingspan", "standing_reach",
+           "standing_vertical_leap", "max_vertical_leap", "lane_agility_time",
+           "three_quarter_sprint", "bench_press", "round_number", "round_pick",
+           "overall_pick")) %>%
+  mutate(missing_vert = is.na(standing_vertical_leap),
+         missing_max = is.na(max_vertical_leap),
+         missing_lane = is.na(lane_agility_time),
+         missing_3q = is.na(three_quarter_sprint),
+         missing_bench = is.na(bench_press),
+         missing_sum = missing_vert + missing_max + missing_lane + missing_3q + missing_bench) %>%
+  filter(missing_sum <= 2)
+
+# Since it would be reasonable that there would be different average performances
+# and measurements, we can have a more stratified imputation for higher data quality.
+imputation_data <- df_combined %>%
+  group_by(position) %>%
+  select(c(position, standing_vertical_leap, max_vertical_leap, lane_agility_time,
+           three_quarter_sprint, bench_press))
+  #aggregate(by = position, FUN = mean)
+
+imputation_vals <- aggregate(list(imputation_data[, -1]), list(imputation_data$position),
+                             FUN = mean, na.rm = TRUE)
+
+df_combined <- df_combined %>%
+  mutate(drafted = as.numeric(!is.na(round_number))) %>%
+  select(-c(round_number, round_pick, overall_pick))
+
+# Show the proportion of drafted and undrafted players
+table(df_combined$drafted) / nrow(df_combined)
+```
+
+```{r eval = FALSE}
+imputation_vals <- imputation_vals[-1,]
+
+# name the imputation values to make them distinct from the values we want to impute.
+colnames(imputation_vals) <- paste(colnames(imputation_vals), "_imp", sep = "")
+
+imputation_vals <- imputation_vals %>%
+  rename(position = Group.1_imp)
+```
+
+```{r eval = FALSE}
+
+# Start imputing, putting in extra columns with the stratified imputation values.
+imputation_df <- merge(df_combined, imputation_vals, by = "position")
+
+# replace missing values, take out one strange entry, and take out unneeded columns
+imputation_df_final <- imputation_df %>%
+  mutate(standing_vertical_leap = if_else(is.na(standing_vertical_leap), standing_vertical_leap_imp, standing_vertical_leap),
+         max_vertical_leap = if_else(is.na(max_vertical_leap), max_vertical_leap_imp, max_vertical_leap),
+         lane_agility_time = if_else(is.na(lane_agility_time), lane_agility_time_imp, lane_agility_time),
+         three_quarter_sprint = if_else(is.na(three_quarter_sprint), three_quarter_sprint_imp, three_quarter_sprint),
+         bench_press = if_else(is.na(bench_press), bench_press_imp, bench_press)) %>%
+  filter(person_id != 200969) %>%
+  select(-c("missing_vert", "missing_max", "missing_lane", "missing_3q",
+            "missing_bench", "missing_sum", "standing_vertical_leap_imp",
+            "max_vertical_leap_imp", "lane_agility_time_imp", "three_quarter_sprint_imp",
+            "bench_press_imp")) %>%
+  mutate(player_name = str_replace_all(player_name, "[^[:alnum:]]", ""))
+
+#write.csv(imputation_df_final, "NBA_draft_data.csv")
+# get a vector of player names for later
+player_name_vec <- imputation_df_final$player_name
+```
+
+```{r eval = FALSE}
+
+# Long string of density plots to show distirubutional differences across each position.
+imputation_df_final %>%
+  ggplot(aes(x = standing_vertical_leap, group = position, color = position)) + 
+  geom_density()
+
+imputation_df_final %>%
+  ggplot(aes(x = max_vertical_leap, group = position, color = position)) + 
+  geom_density()
+
+imputation_df_final %>%
+  ggplot(aes(x = lane_agility_time, group = position, color = position)) + 
+  geom_density()
+
+imputation_df_final %>%
+  ggplot(aes(x = three_quarter_sprint, group = position, color = position)) + 
+  geom_density()
+
+imputation_df_final %>%
+  ggplot(aes(x = bench_press, group = position, color = position)) + 
+  geom_density()
+
+```
+
+```{r eval = FALSE}
+# New data source including college performances
+college_data <- read.csv(
+  'CollegeBasketballPlayers2009_2021.csv')
+
+# Standardize player names to not include punctuation or spaces
+college_data <- college_data %>%
+  mutate(player_name = str_replace_all(player_name, "[^[:alnum:]]", ""))
+ 
+# Display missing values 
+library(tidyverse)
+mice::md.pattern(college_data)
+
+
+sum(is.na(college_data$pick))/length(college_data$pick)
+
+name_count <- arrange(as.data.frame(table(college_data$player_name)))
+
+# create a collection of Id values
+college_data <- college_data %>%
+  mutate(Id = 1:nrow(college_data), .before = player_name)
+
+for (i in 1:ncol(college_data)) {
+  print(c(i, colnames(college_data)[i], sum(is.na(college_data[, i]))))
+}
+
+# collect the id values to drop
+ids_to_drop <- college_data %>%
+  filter(is.na(ast))
+
+```
+
+```{r eval = FALSE}
+
+picked_players <- college_data %>%
+  filter(!is.na(pick))
+
+tester_vector <- college_data$player_name %in% NBA_combine$player_name
+
+sum(tester_vector)
+
+college_data %>%
+  filter(player_name == "A.J. Granger")
+
+combine_data <- read.csv(
+  '/Users/robertkurdyak/Documents/Waterloo/STAT841/NBA_draft_data.csv')
+
+merging_data <- combine_data %>%
+  filter(season >= 2009)
+
+combine_data <- combine_data %>%
+  mutate(name_id = paste(player_name, person_id, sep = ""))
+
+sum(college_data$player_name %in% merging_data$player_name)
+
+sum(drafted_2009_21$PLAYER %in% combine_data$player_name)
+
+merging_data %>%
+  filter(season == "2021")
+
+sort(unique(as.factor(drafted_2009_21$TEAM)))
+
+sort(unique(as.factor(NBA_draft$team_city)))
+
+```
+
+```{r eval = FALSE}
+# Split up the name into a string, paste it with the team, and check for uniqueness
+
+college_subset <- college_data %>%
+  filter(player_name %in% player_name_vec)
+
+merged_working_data <- merge(imputation_df_final, college_subset,
+                             left.by = player_name, right.by = player_name, how = "left")
+```
+
+
+
+```{r eval = FALSE}
+
+# Standardized format for names to make sure undrafted players are undrafted.
+drafted_names <- drafted_2009_21$PLAYER %>%
+  str_replace_all("[^[:alnum:]]", "")
+
+cols_to_drop <- c("Id", "team", "conf", "yr", "ht", "num", "type", "Rec.Rank",
+                  "rimmade", "rimmade.rimmiss", "midmade", "midmade.midmiss", 
+                  "rimmade..rimmade.rimmiss.", "midmade..midmade.midmiss.",
+                  "dunksmade..dunksmade.dunksmiss.", "pick", "X")
+
+player_name_vec <- player_name_vec %>% str_replace_all("[^[:alnum:]]", "")
+
+merged_working_data <- merged_working_data %>%
+  mutate(player_name = str_replace_all(player_name, "[^[:alnum:]]", "")) %>%
+  mutate(drafted = if_else(player_name %in% drafted_names, 1, 0))
+
+# Narrow down to just the season they got drafted.
+trimmed_data <- merged_working_data %>%
+  group_by(player_name) %>%
+  mutate(most_recent = if_else(year == max(year), 1, 0))
+
+trimmed_data <- trimmed_data %>% 
+  filter(most_recent == 1) %>%
+  select(-c(pick, Rec.Rank))
+
+table(trimmed_data$drafted) / nrow(trimmed_data)
+
+sample_num <- 242
+
+trimmed_names <- trimmed_data$player_name
+
+insert_data <- college_data %>%
+  filter(year >= 2009) %>%
+  mutate(player_name = str_replace_all(player_name, "[^[:alnum:]]", "")) %>%
+  filter(player_name %in% player_name_vec) %>%
+  filter(!player_name %in% drafted_names) %>%
+  filter(!is.na(dunksmade)) %>%
+  select(-all_of(cols_to_drop))
+  #na.omit()
+
+insert_data_final <- merge(insert_data, imputation_df_final,
+                           left.on = player_name, right.on = player_name, how = "inner")
+
+insert_data_final <- insert_data_final %>%
+  group_by(player_name) %>%
+  mutate(most_recent = if_else(year == max(year), 1, 0)) %>%
+  filter(most_recent == 1) %>%
+  distinct(player_name, .keep_all = TRUE) %>%
+  filter(drafted == 0)
+
+sort(colnames(trimmed_data))
+sort(colnames(insert_data_final))
+
+!colnames(trimmed_data) %in% colnames(insert_data_final)
+
+working_dataset <- rbind(trimmed_data, insert_data_final)
+
+table(working_dataset$drafted) / nrow(working_dataset)
+
+#write.csv(working_dataset, "/Users/robertkurdyak/Documents/Waterloo/STAT841/STAT841WorkingDataset.csv")
+```

@@ -1,0 +1,4 @@
+1,Center,p-value_1,Power Forward,p-value_2,Small Forward,p-value_3,Shooting Guard,p-value_4,Point Guard,p-value_5
+2,Adjusted Defensive Rating,0.000042,Stops,0.000427,Games Played,0.000085,Max Vertical Leap,0.004211,Two-pointers made,9.24E-07
+3,Defensive Rating,0.000166,Box Plus-Minus,0.001416,Two-Pointers Made,0.000194,Standing Vertical Leap,0.006251,Two-Pointers Attempted,2.09E-06
+4,Defensive Game Box Plus Minus,0.000343,Standing Reach,0.002022,Bench Press,0.000468,Defensive Rating,0.007614,Game Box Plus-Minus,3.48E-06
